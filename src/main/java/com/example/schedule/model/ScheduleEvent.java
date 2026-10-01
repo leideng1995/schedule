@@ -41,4 +41,7 @@ public class ScheduleEvent {
     private int acceptedCount;
 
     private int pendingCount;
+
+    /** 留言条数 */
+    private int commentCount;
 }

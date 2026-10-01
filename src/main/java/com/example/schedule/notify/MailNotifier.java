@@ -1,9 +1,11 @@
 package com.example.schedule.notify;
 
+import com.example.schedule.mapper.CommentMapper;
 import com.example.schedule.mapper.EventMapper;
 import com.example.schedule.mapper.GroupMapper;
 import com.example.schedule.mapper.SysUserMapper;
 import com.example.schedule.model.Conflict;
+import com.example.schedule.model.EventComment;
 import com.example.schedule.model.EventParticipant;
 import com.example.schedule.model.InviteStatus;
 import com.example.schedule.model.ScheduleEvent;
@@ -28,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import static org.springframework.web.util.HtmlUtils.htmlEscape;
 
@@ -49,6 +52,7 @@ public class MailNotifier {
     private final SysUserMapper userMapper;
     private final EventMapper eventMapper;
     private final GroupMapper groupMapper;
+    private final CommentMapper commentMapper;
 
     @Value("${spring.mail.username:}")
     private String from;
@@ -119,6 +123,49 @@ public class MailNotifier {
 
     @Async
     @TransactionalEventListener
+    public void on(Notice.EventUpdated n) {
+        ScheduleEvent e = eventMapper.findById(n.eventId());
+        ScheduleEvent b = n.before();
+        if (e == null) {
+            return;
+        }
+        // 列出改了什么:原值划掉,后面是新值
+        List<String> changes = new ArrayList<>();
+        if (n.timeChanged()) {
+            changes.add(change("时间", span(b.getStartTime(), b.getEndTime()), span(e.getStartTime(), e.getEndTime())));
+        }
+        if (!Objects.equals(b.getTitle(), e.getTitle())) {
+            changes.add(change("标题", esc(b.getTitle()), esc(e.getTitle())));
+        }
+        if (!Objects.equals(b.getLocation(), e.getLocation())) {
+            changes.add(change("地点", esc(b.getLocation()), esc(e.getLocation())));
+        }
+        if (!Objects.equals(b.getDescription(), e.getDescription())) {
+            changes.add("<li>说明已更新</li>");
+        }
+        List<Long> ids = new ArrayList<>();
+        for (EventParticipant p : eventMapper.findParticipants(n.eventId())) {
+            if (!p.getUserId().equals(e.getOwnerId()) && p.getStatus() != InviteStatus.DECLINED) {
+                ids.add(p.getUserId());
+            }
+        }
+        String body = p(esc(e.getOwnerName()) + " 修改了行程「<strong>" + esc(e.getTitle()) + "</strong>」:")
+                + "<ul style=\"margin:0 0 12px;padding-left:20px\">" + String.join("", changes) + "</ul>"
+                + eventTable(e)
+                + (n.timeChanged() ? warn("时间有变化,请重新确认是否参加。") : "");
+        String subject = "【行程变更】「" + e.getTitle() + "」" + (n.timeChanged() ? "时间已调整,请重新确认" : "有更新");
+        for (SysUser u : users(ids)) {
+            send(u, subject, body, n.timeChanged() ? "去重新确认" : "查看行程", n.timeChanged() ? "/#inbox" : "/#events");
+        }
+    }
+
+    private static String change(String field, String from, String to) {
+        return "<li>" + field + ":<span style=\"color:#9ca3af;text-decoration:line-through\">"
+                + (from.isEmpty() ? "无" : from) + "</span> → <strong>" + (to.isEmpty() ? "无" : to) + "</strong></li>";
+    }
+
+    @Async
+    @TransactionalEventListener
     public void on(Notice.EventCancelled n) {
         ScheduleEvent e = eventMapper.findById(n.eventId());
         if (e == null) {
@@ -176,6 +223,46 @@ public class MailNotifier {
                 + p("目前 " + g.getAcceptedCount() + " 人已加入" + (g.getPendingCount() > 0 ? "," + g.getPendingCount() + " 人待同意" : "") + "。");
         send(userMapper.findById(g.getOwnerId()), "【入组回复】" + who.getDisplayName() + " " + verb + "「" + g.getName() + "」",
                 body, "查看我的组", "/#groups");
+    }
+
+    // ------------------------------------------------------------------ 留言
+
+    @Async
+    @TransactionalEventListener
+    public void on(Notice.CommentReplied n) {
+        EventComment reply = commentMapper.findById(n.commentId());
+        if (reply == null || reply.getReplyToUserId() == null) {
+            return;
+        }
+        ScheduleEvent e = eventMapper.findById(reply.getEventId());
+        // 被回复的人如果就是这一组顶层留言的作者,在邮件里引用他那条留言
+        EventComment root = commentMapper.findById(reply.getParentId());
+        if (e == null) {
+            return;
+        }
+        String body = p(esc(reply.getDisplayName()) + " 在行程「<strong>" + esc(e.getTitle()) + "</strong>」里回复了你:")
+                + "<blockquote style=\"margin:0 0 12px;padding:8px 12px;border-left:3px solid #2563eb;background:#f8fafc;"
+                + "white-space:pre-wrap\">" + esc(reply.getContent()) + "</blockquote>"
+                + (root != null && root.getUserId().equals(reply.getReplyToUserId())
+                    ? p("<span style=\"color:#6b7280\">你的留言:" + esc(root.getContent()) + "</span>") : "")
+                + p("<span style=\"color:#6b7280\">" + span(e.getStartTime(), e.getEndTime()) + "</span>");
+        send(userMapper.findById(reply.getReplyToUserId()), "【留言回复】" + reply.getDisplayName() + " 回复了你的留言",
+                body, "查看留言", "/#events");
+    }
+
+    // ------------------------------------------------------------------ 账号
+
+    @Async
+    @TransactionalEventListener
+    public void on(Notice.PasswordResetRequested n) {
+        SysUser u = userMapper.findById(n.userId());
+        if (u == null) {
+            return;
+        }
+        String body = p("我们收到了重置你账号 <strong>" + esc(u.getUsername()) + "</strong> 密码的申请。点击下面的按钮设置新密码:")
+                + warn("链接 " + n.validMinutes() + " 分钟内有效,只能使用一次;再次申请后,旧的链接会失效。")
+                + p("如果不是你本人操作,请忽略这封邮件,你的密码不会改变。");
+        send(u, "【重置密码】行程预约账号密码重置", body, "设置新密码", "/reset-password.html?token=" + n.token());
     }
 
     // ------------------------------------------------------------------ 发送

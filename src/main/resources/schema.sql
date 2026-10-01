@@ -86,3 +86,106 @@ CREATE TABLE IF NOT EXISTS event_participant (
     CONSTRAINT fk_participant_event FOREIGN KEY (event_id) REFERENCES schedule_event (event_id) ON DELETE CASCADE,
     CONSTRAINT fk_participant_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id)
 );
+
+-- 邮箱重置密码的一次性令牌:只存令牌的 SHA-256,不存原文(数据库泄露也无法拿来重置密码);
+-- 30 分钟内有效,用过或申请了新的就失效
+CREATE TABLE IF NOT EXISTS password_reset_token (
+    token_id   BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT      NOT NULL,
+    token_hash CHAR(64)    NOT NULL UNIQUE,
+    expires_at DATETIME    NOT NULL,
+    used_at    DATETIME    NULL,
+    request_ip VARCHAR(64) NULL,
+    created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_reset_user (user_id),
+    CONSTRAINT fk_reset_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id) ON DELETE CASCADE
+);
+
+-- 行程留言:发起人和未拒绝的参与人可以留言;删除行程时一并删除
+-- 回复只有一层:parent_id 为所属的那条顶层留言(顶层留言为 NULL),reply_to_user_id 为被回复的人;
+-- 留言人删除自己的顶层留言、而下面有别人的回复时,只标记 deleted_at(显示"该留言已删除",回复保留);
+-- 管理员删除顶层留言时,它下面的回复一起删除
+CREATE TABLE IF NOT EXISTS event_comment (
+    comment_id       BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_id         BIGINT       NOT NULL,
+    user_id          BIGINT       NOT NULL,
+    parent_id        BIGINT       NULL,
+    reply_to_user_id BIGINT       NULL,
+    content          VARCHAR(500) NOT NULL,
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    edited_at        DATETIME     NULL,
+    deleted_at       DATETIME     NULL,
+    INDEX idx_comment_event (event_id, created_at),
+    INDEX idx_comment_parent (parent_id),
+    CONSTRAINT fk_comment_event FOREIGN KEY (event_id) REFERENCES schedule_event (event_id) ON DELETE CASCADE,
+    CONSTRAINT fk_comment_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id),
+    CONSTRAINT fk_comment_parent FOREIGN KEY (parent_id) REFERENCES event_comment (comment_id) ON DELETE CASCADE,
+    CONSTRAINT fk_comment_reply_to FOREIGN KEY (reply_to_user_id) REFERENCES sys_user (user_id)
+);
+
+-- 早期建的 event_comment 表没有回复相关的列,没有时补上
+SET @ddl = (SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE event_comment
+            ADD COLUMN parent_id BIGINT NULL AFTER user_id,
+            ADD COLUMN reply_to_user_id BIGINT NULL AFTER parent_id,
+            ADD INDEX idx_comment_parent (parent_id),
+            ADD CONSTRAINT fk_comment_parent FOREIGN KEY (parent_id) REFERENCES event_comment (comment_id) ON DELETE CASCADE,
+            ADD CONSTRAINT fk_comment_reply_to FOREIGN KEY (reply_to_user_id) REFERENCES sys_user (user_id)',
+        'DO 0')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'event_comment' AND column_name = 'parent_id');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 站内通知:user_id 为收件人;title / content 为纯文本,显示时转义;read_at 为空表示未读。
+-- 行程、组、留言删除后通知保留(组和留言的关联置空,行程取消不会删除记录)
+CREATE TABLE IF NOT EXISTS notification (
+    notification_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id         BIGINT       NOT NULL,
+    type            VARCHAR(30)  NOT NULL,
+    title           VARCHAR(200) NOT NULL,
+    content         VARCHAR(500) NULL,
+    actor_id        BIGINT       NULL,
+    event_id        BIGINT       NULL,
+    group_id        BIGINT       NULL,
+    comment_id      BIGINT       NULL,
+    read_at         DATETIME     NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_notify_user (user_id, notification_id),
+    INDEX idx_notify_unread (user_id, read_at),
+    INDEX idx_notify_reminder (type, event_id, user_id),
+    CONSTRAINT fk_notify_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_notify_actor FOREIGN KEY (actor_id) REFERENCES sys_user (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_notify_event FOREIGN KEY (event_id) REFERENCES schedule_event (event_id) ON DELETE CASCADE,
+    CONSTRAINT fk_notify_group FOREIGN KEY (group_id) REFERENCES user_group (group_id) ON DELETE SET NULL,
+    CONSTRAINT fk_notify_comment FOREIGN KEY (comment_id) REFERENCES event_comment (comment_id) ON DELETE SET NULL
+);
+
+-- 早期建的 event_comment 表没有 deleted_at,没有时补上
+SET @ddl = (SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE event_comment ADD COLUMN deleted_at DATETIME NULL AFTER created_at',
+        'DO 0')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'event_comment' AND column_name = 'deleted_at');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 早期建的 event_comment 表没有 edited_at(留言人编辑过的时间),没有时补上
+SET @ddl = (SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE event_comment ADD COLUMN edited_at DATETIME NULL AFTER created_at',
+        'DO 0')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'event_comment' AND column_name = 'edited_at');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 用户头像:服务器统一裁成 256x256 的 PNG 后存这里(上传的原图不保存);删除用户时一并删除
+CREATE TABLE IF NOT EXISTS user_avatar (
+    user_id    BIGINT     PRIMARY KEY,
+    image      MEDIUMBLOB NOT NULL,
+    updated_at DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_avatar_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id) ON DELETE CASCADE
+);

@@ -1,5 +1,6 @@
 package com.example.schedule.mapper;
 
+import com.example.schedule.model.BusySlot;
 import com.example.schedule.model.Conflict;
 import com.example.schedule.model.EventParticipant;
 import com.example.schedule.model.EventStatus;
@@ -25,6 +26,21 @@ public interface EventMapper {
     List<ScheduleEvent> findForUser(@Param("userId") long userId);
 
     int updateStatus(@Param("id") long id, @Param("status") EventStatus status);
+
+    /** 修改标题、地点、说明、开始和结束时间 */
+    int update(ScheduleEvent event);
+
+    /** 改时间后,除发起人外已同意的参与人改回"待确认",需要重新确认 */
+    int resetAccepted(@Param("eventId") long eventId, @Param("ownerId") long ownerId);
+
+    /**
+     * 这些普通用户在 [start, end) 内的忙碌时段(已同意、未取消的行程),只含时间。
+     * excludeEventId 为当前正在编辑 / 邀请的行程,可为 null。
+     */
+    List<BusySlot> findBusy(@Param("userIds") Collection<Long> userIds,
+                            @Param("start") LocalDateTime start,
+                            @Param("end") LocalDateTime end,
+                            @Param("excludeEventId") Long excludeEventId);
 
     /**
      * 时间冲突:这些用户在 [start, end) 内已同意参加的、未取消的其他行程。

@@ -52,6 +52,17 @@ public class UserService {
         return ok && user != null ? user : null;
     }
 
+    /** 按用户名或邮箱(含 @)查用户,找不到返回 null */
+    public SysUser findByAccount(String account) {
+        String name = account == null ? "" : account.trim().toLowerCase();
+        return name.isEmpty() ? null : name.contains("@") ? userMapper.findByEmail(name) : userMapper.findByUsername(name);
+    }
+
+    /** 新密码是否符合规则:8-64 位,同时包含字母和数字 */
+    public static boolean isValidPassword(String password) {
+        return password != null && PASSWORD.matcher(password).matches();
+    }
+
     /** 新建用户。自助注册固定为普通用户,只有管理员新建时才能指定角色 */
     public SysUser create(RegisterRequest r, boolean allowRole) {
         String username = r.username() == null ? "" : r.username().trim().toLowerCase();
@@ -85,7 +96,7 @@ public class UserService {
 
     /**
      * 管理员把用户密码重置为 RESET_PASSWORD,并要求该用户下次登录后先修改密码。
-     * 不能重置自己的(自己改密码走 changePassword)。对方已登录的会话下一次请求起就会被要求改密码。
+     * 不能重置自己的(自己改密码走 changePassword)。对方已登录的会话会失效,需用新密码重新登录后先修改密码。
      */
     public SysUser resetPassword(SysUser admin, long userId) {
         SysUser u = userMapper.findById(userId);

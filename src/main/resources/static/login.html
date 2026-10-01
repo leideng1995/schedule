@@ -42,7 +42,21 @@
       </div>
       <button class="primary" id="submit">登录</button>
       <p class="error" id="error" role="alert"></p>
+      <p class="forgot-link" id="forgotLink"><button type="button" class="link" id="openForgot">忘记密码?</button></p>
     </form>
+    <!-- 忘记密码:输入用户名或邮箱,把重置链接发到账号的邮箱 -->
+    <form id="forgotForm" novalidate hidden>
+      <p class="note">输入用户名或注册邮箱,我们会把重置密码的链接发到你账号的邮箱,30 分钟内有效。</p>
+      <div class="field">
+        <label for="account">用户名或邮箱</label>
+        <input id="account" name="account" required maxlength="100" autocomplete="username">
+      </div>
+      <button class="primary" id="forgotSubmit">发送重置邮件</button>
+      <p class="error" id="forgotError" role="alert"></p>
+      <div class="ok-box" id="forgotDone" hidden></div>
+      <p class="forgot-link"><button type="button" class="link" id="backToLogin">返回登录</button></p>
+    </form>
+    <div class="ok-box" id="resetDone" hidden>密码已重置,请用新密码登录。</div>
     <p class="muted" style="font-size:12px;margin:0">自助注册的是普通用户;管理员账号由系统管理员分配。</p>
   </div>
 </div>
@@ -68,9 +82,46 @@
     $('#password').autocomplete = reg ? 'new-password' : 'current-password';
     $('#submit').textContent = reg ? '注册并登录' : '登录';
     $('#error').textContent = '';
+    $('#forgotLink').hidden = reg;
   }
   $('#tabLogin').onclick = () => setMode(false);
   $('#tabRegister').onclick = () => setMode(true);
+
+  /* 忘记密码:切换到申请面板 / 返回登录 */
+  function showForgot(on) {
+    $('#form').hidden = on;
+    $('.switch').hidden = on;
+    $('#forgotForm').hidden = !on;
+    $('#resetDone').hidden = true;
+    $('#forgotError').textContent = '';
+    $('#forgotDone').hidden = true;
+    if (on) {
+      $('#account').value = $('#username').value; // 带上已经输入的用户名
+      $('#account').focus();
+    } else {
+      $('#username').focus();
+    }
+  }
+  $('#openForgot').onclick = () => showForgot(true);
+  $('#backToLogin').onclick = () => showForgot(false);
+  $('#forgotForm').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const account = $('#account').value.trim();
+    $('#forgotError').textContent = '';
+    if (!account) { $('#forgotError').textContent = '请输入用户名或邮箱'; return; }
+    $('#forgotSubmit').disabled = true;
+    try {
+      const r = await api('POST', '/auth/forgot-password', { account });
+      $('#forgotDone').hidden = false;
+      $('#forgotDone').innerHTML = `${esc(r.message)}。<br><span class="muted">没收到?请检查垃圾邮件;没有填写邮箱的账号请联系管理员重置密码。</span>`;
+    } catch (e) {
+      $('#forgotError').textContent = e.message;
+    } finally {
+      $('#forgotSubmit').disabled = false;
+    }
+  };
+  // 从重置密码页回来:提示用新密码登录
+  if (new URLSearchParams(location.search).get('reset') === '1') $('#resetDone').hidden = false;
 
   $('#form').onsubmit = async (ev) => {
     ev.preventDefault();

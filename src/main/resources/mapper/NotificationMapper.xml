@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.schedule.mapper.NotificationMapper">
+
+    <sql id="filter">
+        <if test="filter == 'unread'">AND n.read_at IS NULL</if>
+        <if test="filter == 'comment'">AND n.type IN ('COMMENT', 'COMMENT_REPLY')</if>
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="notificationId">
+        INSERT INTO notification (user_id, type, title, content, actor_id, event_id, group_id, comment_id)
+        VALUES (#{userId}, #{type}, #{title}, #{content}, #{actorId}, #{eventId}, #{groupId}, #{commentId})
+    </insert>
+
+    <select id="findForUser" resultType="com.example.schedule.model.Notification">
+        SELECT n.*, a.display_name AS actor_name
+        FROM notification n LEFT JOIN sys_user a ON a.user_id = n.actor_id
+        WHERE n.user_id = #{userId}
+        <include refid="filter"/>
+        <if test="beforeId != null">AND n.notification_id &lt; #{beforeId}</if>
+        ORDER BY n.notification_id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countUnread" resultType="int">
+        SELECT COUNT(*) FROM notification WHERE user_id = #{userId} AND read_at IS NULL
+    </select>
+
+    <select id="latestId" resultType="java.lang.Long">
+        SELECT MAX(notification_id) FROM notification WHERE user_id = #{userId}
+    </select>
+
+    <update id="markRead">
+        UPDATE notification SET read_at = NOW()
+        WHERE notification_id = #{id} AND user_id = #{userId} AND read_at IS NULL
+    </update>
+
+    <update id="markAllRead">
+        UPDATE notification n SET n.read_at = NOW()
+        WHERE n.user_id = #{userId} AND n.read_at IS NULL
+        <if test="filter == 'comment'">AND n.type IN ('COMMENT', 'COMMENT_REPLY')</if>
+    </update>
+
+    <select id="findPendingReminders" resultType="com.example.schedule.model.ReminderItem">
+        SELECT n.notification_id, e.event_id, e.title, e.location, e.start_time, e.end_time
+        FROM notification n JOIN schedule_event e ON e.event_id = n.event_id
+        WHERE n.user_id = #{userId}
+          AND n.type = 'EVENT_REMINDER'
+          AND n.read_at IS NULL
+          AND e.status = 'ACTIVE'
+          AND e.start_time &gt; NOW() - INTERVAL 1 MINUTE
+        ORDER BY e.start_time
+    </select>
+
+    <!-- 参加者 = 已同意的参与人(普通用户发起人自己也是一条 ACCEPTED;管理员发起人不参加,不提醒) -->
+    <insert id="insertDueReminders">
+        INSERT INTO notification (user_id, type, title, content, event_id)
+        SELECT p.user_id, 'EVENT_REMINDER',
+               CONCAT('「', e.title, '」', #{minutes}, ' 分钟内开始'),
+               CONCAT(DATE_FORMAT(e.start_time, '%H:%i'), ' - ', DATE_FORMAT(e.end_time, '%H:%i'),
+                      IFNULL(CONCAT(' · ', e.location), '')),
+               e.event_id
+        FROM event_participant p
+        JOIN schedule_event e ON e.event_id = p.event_id
+        WHERE p.status = 'ACCEPTED'
+          AND e.status = 'ACTIVE'
+          AND e.start_time &gt; NOW()
+          AND e.start_time &lt;= NOW() + INTERVAL #{minutes} MINUTE
+          AND NOT EXISTS (
+              SELECT 1 FROM notification n
+              WHERE n.type = 'EVENT_REMINDER' AND n.event_id = e.event_id AND n.user_id = p.user_id
+                AND n.created_at &gt;= e.start_time - INTERVAL (#{minutes} + 1) MINUTE)
+    </insert>
+</mapper>

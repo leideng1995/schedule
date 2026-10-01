@@ -7,7 +7,8 @@
         e.owner_id, e.group_id, e.status, e.created_at,
         o.display_name AS owner_name, g.name AS group_name,
         (SELECT COUNT(*) FROM event_participant x WHERE x.event_id = e.event_id AND x.status = 'ACCEPTED') AS accepted_count,
-        (SELECT COUNT(*) FROM event_participant x WHERE x.event_id = e.event_id AND x.status = 'PENDING') AS pending_count
+        (SELECT COUNT(*) FROM event_participant x WHERE x.event_id = e.event_id AND x.status = 'PENDING') AS pending_count,
+        (SELECT COUNT(*) FROM event_comment c WHERE c.event_id = e.event_id AND c.deleted_at IS NULL) AS comment_count
     </sql>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="eventId">
@@ -36,6 +37,35 @@
     <update id="updateStatus">
         UPDATE schedule_event SET status = #{status} WHERE event_id = #{id}
     </update>
+
+    <update id="update">
+        UPDATE schedule_event
+        SET title = #{title}, location = #{location}, description = #{description},
+            start_time = #{startTime}, end_time = #{endTime}
+        WHERE event_id = #{eventId}
+    </update>
+
+    <update id="resetAccepted">
+        UPDATE event_participant SET status = 'PENDING', responded_at = NULL
+        WHERE event_id = #{eventId} AND user_id &lt;&gt; #{ownerId} AND status = 'ACCEPTED'
+    </update>
+
+    <!-- 忙闲查询:只返回时间,不返回标题、地点等内容;只查普通用户 -->
+    <select id="findBusy" resultType="com.example.schedule.model.BusySlot">
+        SELECT p.user_id, e.start_time, e.end_time
+        FROM event_participant p
+        JOIN schedule_event e ON e.event_id = p.event_id
+        JOIN sys_user u ON u.user_id = p.user_id
+        WHERE p.status = 'ACCEPTED'
+          AND e.status = 'ACTIVE'
+          AND u.role = 'USER'
+          AND e.start_time &lt; #{end}
+          AND e.end_time &gt; #{start}
+          AND p.user_id IN
+          <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          <if test="excludeEventId != null">AND e.event_id &lt;&gt; #{excludeEventId}</if>
+        ORDER BY p.user_id, e.start_time
+    </select>
 
     <!-- 区间重叠:已有.start < 新.end 且 已有.end > 新.start -->
     <select id="findConflicts" resultType="com.example.schedule.model.Conflict">

@@ -45,9 +45,23 @@ const fromNow = (v) => {
   return `${Math.floor(m / 1440)} 天后`;
 };
 
-/* 头像:取姓名首字,颜色按姓名固定 */
-const avatar = (name, cls = '') => {
+/* 有头像的用户 → 版本号(/users/avatars);没有头像的显示姓名首字 */
+const AVATARS = new Map();
+async function loadAvatars() {
+  try {
+    const m = await api('GET', '/users/avatars');
+    AVATARS.clear();
+    for (const [id, v] of Object.entries(m)) AVATARS.set(Number(id), v);
+  } catch (e) { /* 拿不到就都显示首字 */ }
+}
+
+/* 头像:传了 userId 且该用户上传过头像时显示图片,否则取姓名首字,颜色按姓名固定 */
+const avatar = (name, cls = '', userId) => {
   const s = String(name || '?');
+  const v = userId != null ? AVATARS.get(Number(userId)) : undefined;
+  if (v !== undefined) {
+    return `<img class="avatar ${cls}" src="/api/users/${Number(userId)}/avatar?v=${Number(v)}" alt="" title="${esc(s)}" loading="lazy">`;
+  }
   let h = 0;
   for (const c of s) h = (h * 31 + c.codePointAt(0)) % 360;
   const ch = [...s][0].toUpperCase();
@@ -259,7 +273,8 @@ function userPickerHtml(name, users, emptyText = '没有可选的用户') {
     <input type="search" placeholder="搜索姓名或用户名" data-picker-search aria-label="搜索用户">
     <div class="list">${users.map((u) => `<label data-key="${esc((u.displayName + ' ' + u.username).toLowerCase())}">
         <input type="checkbox" name="${esc(name)}" value="${u.userId}" data-multi>
-        ${avatar(u.displayName, 'xs')}<span>${esc(u.displayName)} <span class="muted">@${esc(u.username)}</span></span>
+        ${avatar(u.displayName, 'xs', u.userId)}<span>${esc(u.displayName)} <span class="muted">@${esc(u.username)}</span></span>
+        <span class="avail" data-avail="${u.userId}"></span>
       </label>`).join('')}
       <div class="none" hidden data-picker-none>没有匹配的用户</div>
     </div>

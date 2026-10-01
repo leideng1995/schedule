@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.schedule.mapper.CommentMapper">
+
+    <!-- 已标记删除的留言不返回原内容 -->
+    <sql id="cols">
+        c.comment_id, c.event_id, c.user_id, c.parent_id, c.reply_to_user_id, c.created_at, c.edited_at, c.deleted_at,
+        IF(c.deleted_at IS NULL, c.content, NULL) AS content,
+        u.username, u.display_name, r.display_name AS reply_to_name
+    </sql>
+    <sql id="from">
+        FROM event_comment c
+        JOIN sys_user u ON u.user_id = c.user_id
+        LEFT JOIN sys_user r ON r.user_id = c.reply_to_user_id
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="commentId">
+        INSERT INTO event_comment (event_id, user_id, parent_id, reply_to_user_id, content)
+        VALUES (#{eventId}, #{userId}, #{parentId}, #{replyToUserId}, #{content})
+    </insert>
+
+    <select id="findById" resultType="com.example.schedule.model.EventComment">
+        SELECT <include refid="cols"/> <include refid="from"/>
+        WHERE c.comment_id = #{id}
+    </select>
+
+    <!-- 顶层留言和回复一起按时间返回,前端按 parent_id 分组 -->
+    <select id="findByEvent" resultType="com.example.schedule.model.EventComment">
+        SELECT <include refid="cols"/> <include refid="from"/>
+        WHERE c.event_id = #{eventId}
+        ORDER BY c.created_at, c.comment_id
+    </select>
+
+    <select id="countReplies" resultType="int">
+        SELECT COUNT(*) FROM event_comment WHERE parent_id = #{id}
+    </select>
+
+    <select id="countOthersReplies" resultType="int">
+        SELECT COUNT(*) FROM event_comment WHERE parent_id = #{id} AND user_id &lt;&gt; #{userId}
+    </select>
+
+    <!-- 编辑内容;已删除的不能编辑 -->
+    <update id="updateContent">
+        UPDATE event_comment SET content = #{content}, edited_at = NOW()
+        WHERE comment_id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 只标记删除,保留下面别人的回复 -->
+    <update id="softDelete">
+        UPDATE event_comment SET deleted_at = NOW() WHERE comment_id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 回复由外键 ON DELETE CASCADE 一起删除 -->
+    <delete id="delete">
+        DELETE FROM event_comment WHERE comment_id = #{id}
+    </delete>
+</mapper>
