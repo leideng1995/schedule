@@ -1,0 +1,55 @@
+# 敏感配置(数据库密码、邮箱账号和密码、初始管理员密码)不写在这里:
+# 放在项目根目录的 application-local.yaml(不提交,格式见 application-local.yaml.example),或者用环境变量。
+spring:
+  config:
+    import: optional:file:./application-local.yaml
+  application:
+    name: schedule
+  datasource:
+    # createDatabaseIfNotExist:首次启动自动建 schedule 库
+    url: jdbc:mysql://localhost:3306/schedule?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&createDatabaseIfNotExist=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always                 # 每次启动执行 schema.sql(全部是 CREATE TABLE IF NOT EXISTS,不会清数据)
+  # 邮件通知:用 Gmail 发送。密码是 Gmail「应用专用密码」(不是登录密码)。
+  # 账号或密码为空时不发邮件,只在日志里提示,不影响其他功能。
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      # 连接 / 读 / 写超时(毫秒),SMTP 卡住时不会一直占着发送线程
+      "[mail.smtp.connectiontimeout]": 10000
+      "[mail.smtp.timeout]": 10000
+      "[mail.smtp.writetimeout]": 10000
+server:
+  port: 8084
+  servlet:
+    session:
+      timeout: 2h                  # 登录会话 2 小时无操作过期
+      cookie:
+        http-only: true
+        same-site: strict
+app:
+  admin:
+    # 系统里没有管理员时,启动用这个密码创建管理员账号;为空则不创建
+    username: admin
+    initial-password: ${ADMIN_INITIAL_PASSWORD:}
+  mail:
+    from-name: 行程预约
+    # 邮件里"去处理"链接指向的网站地址;部署到服务器后改成实际访问地址
+    base-url: ${MAIL_BASE_URL:http://localhost:${server.port}}
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true   # start_time -> startTime
+  mapper-locations: classpath:mapper/*.xml
+logging:
+  level:
+    com.example.schedule: info

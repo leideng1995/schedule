@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 - 行程预约</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <h1>行程预约</h1>
+    <p class="sub">预约行程、邀请同伴、组内邀约</p>
+    <div class="switch" role="tablist">
+      <button type="button" id="tabLogin" class="active" role="tab">登录</button>
+      <button type="button" id="tabRegister" role="tab">注册</button>
+    </div>
+    <form id="form" novalidate>
+      <div class="field">
+        <label for="username" id="userLabel">用户名或邮箱</label>
+        <input id="username" name="username" required maxlength="100" autocomplete="username" autofocus>
+        <span class="help" id="userHelp" hidden>3~20 位小写字母、数字或下划线</span>
+      </div>
+      <div class="field" id="emailField" hidden>
+        <label for="email">邮箱</label>
+        <input id="email" name="email" type="email" maxlength="100" autocomplete="email">
+        <span class="help">注册后也可以用邮箱登录</span>
+      </div>
+      <div class="field" id="nameField" hidden>
+        <label for="displayName">姓名</label>
+        <input id="displayName" name="displayName" maxlength="50" autocomplete="name">
+        <span class="help">邀请时其他人看到的名字</span>
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+        <span class="help" id="pwHelp" hidden>8~64 位,同时包含字母和数字</span>
+      </div>
+      <div class="field" id="confirmField" hidden>
+        <label for="confirm">确认密码</label>
+        <input id="confirm" name="confirm" type="password" autocomplete="new-password">
+      </div>
+      <button class="primary" id="submit">登录</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+    <p class="muted" style="font-size:12px;margin:0">自助注册的是普通用户;管理员账号由系统管理员分配。</p>
+  </div>
+</div>
+<script src="/js/common.js"></script>
+<script>
+  let registering = false;
+  const next = new URLSearchParams(location.search).get('next');
+  // 只允许跳回本站页面,防止 ?next= 被用来跳到外部网站
+  const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+
+  function setMode(reg) {
+    registering = reg;
+    $('#tabLogin').classList.toggle('active', !reg);
+    $('#tabRegister').classList.toggle('active', reg);
+    $('#nameField').hidden = !reg;
+    $('#confirmField').hidden = !reg;
+    $('#pwHelp').hidden = !reg;
+    $('#userHelp').hidden = !reg;
+    $('#emailField').hidden = !reg;
+    // 注册时这一栏只能填用户名;登录时用户名、邮箱都行
+    $('#userLabel').textContent = reg ? '用户名' : '用户名或邮箱';
+    $('#username').maxLength = reg ? 20 : 100;
+    $('#password').autocomplete = reg ? 'new-password' : 'current-password';
+    $('#submit').textContent = reg ? '注册并登录' : '登录';
+    $('#error').textContent = '';
+  }
+  $('#tabLogin').onclick = () => setMode(false);
+  $('#tabRegister').onclick = () => setMode(true);
+
+  $('#form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const f = Object.fromEntries(new FormData(ev.target));
+    const err = $('#error');
+    err.textContent = '';
+    if (!f.username.trim() || !f.password) { err.textContent = registering ? '请输入用户名和密码' : '请输入用户名或邮箱,以及密码'; return; }
+    if (registering) {
+      if (!f.displayName.trim()) { err.textContent = '请输入姓名'; return; }
+      if (!f.email.trim()) { err.textContent = '请输入邮箱'; return; }
+      if (f.password !== f.confirm) { err.textContent = '两次输入的密码不一致'; return; }
+    }
+    $('#submit').disabled = true;
+    try {
+      if (registering) {
+        await api('POST', '/auth/register', {
+          username: f.username.trim(), password: f.password, displayName: f.displayName.trim(), email: f.email.trim(),
+        });
+      } else {
+        await api('POST', '/auth/login', { username: f.username.trim(), password: f.password });
+      }
+      location.replace(target);
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      $('#submit').disabled = false;
+    }
+  };
+
+  // 已经登录的直接进主页
+  fetch('/api/auth/me').then((r) => { if (r.ok) location.replace(target); }).catch(() => {});
+</script>
+</body>
+</html>

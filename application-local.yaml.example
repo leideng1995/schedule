@@ -1,0 +1,18 @@
+# 本机配置示例。复制为项目根目录下的 application-local.yaml(已在 .gitignore 中,不会提交),填入自己的值。
+# 也可以不建这个文件,改用环境变量:DB_USERNAME、DB_PASSWORD、MAIL_USERNAME、MAIL_PASSWORD、
+# ADMIN_INITIAL_PASSWORD、MAIL_BASE_URL。
+spring:
+  datasource:
+    username: root
+    password: your-mysql-password
+  mail:
+    username: your-account@gmail.com
+    # Gmail「应用专用密码」(16 位,需先开启两步验证),不是登录密码;留空则不发邮件
+    password: your-16-char-app-password
+app:
+  admin:
+    # 系统里还没有管理员时,用这个密码创建初始管理员 admin;留空则不创建
+    initial-password: change-me-123
+  mail:
+    # 邮件里链接指向的网站地址,填别人能访问到的地址
+    base-url: http://localhost:${server.port}

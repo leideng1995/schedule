@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>行程预约</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="logo" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#fff" stroke-width="2"/>
+      <path d="M3 10h18M8 3v4M16 3v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="#fff"/></svg>
+  </span>
+  <h1>行程预约</h1>
+  <span class="spacer"></span>
+  <span class="who-avatar" id="whoAvatar"></span>
+  <span class="who" id="who"></span>
+  <button class="small" id="profile">个人信息</button>
+  <button class="small" id="changePassword">修改密码</button>
+  <button class="small" id="logout">退出登录</button>
+</header>
+<nav class="tabs" role="tablist">
+  <button data-tab="events" class="active" role="tab">我的行程</button>
+  <button data-tab="inbox" role="tab">待我回复<span class="count" id="inboxCount" hidden></span></button>
+  <button data-tab="groups" role="tab">我的组</button>
+  <button data-tab="users" role="tab" data-admin hidden>用户管理</button>
+</nav>
+<main>
+  <section id="tab-events" class="home">
+    <div class="hero" id="hero"></div>
+    <div class="stats" id="stats"></div>
+    <div class="home-layout">
+      <div class="home-main">
+        <div class="toolbar ev-toolbar">
+          <div class="seg" id="viewSwitch" role="group" aria-label="视图">
+            <button type="button" data-view="list">列表</button>
+            <button type="button" data-view="week">周视图</button>
+          </div>
+          <input type="search" id="eventSearch" placeholder="搜索标题、地点、发起人、组" aria-label="搜索行程">
+          <span class="spacer"></span>
+          <button class="primary" id="newEvent">+ 预约行程</button>
+        </div>
+        <div class="ev-filters">
+          <div class="chips" id="eventChips"></div>
+          <span class="spacer"></span>
+          <label class="check"><input type="checkbox" id="showPast"> 显示已结束、已取消、已拒绝</label>
+        </div>
+        <div class="day-filter" id="dayFilter" hidden></div>
+        <div id="eventList"></div>
+        <div id="weekView" class="week-view" hidden></div>
+      </div>
+      <aside class="home-side">
+        <div class="panel" id="miniCal"></div>
+        <div class="panel" id="upNext"></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="tab-inbox" hidden>
+    <h3 class="section-title">行程邀请</h3>
+    <div id="inboxEvents"></div>
+    <h3 class="section-title">入组邀请</h3>
+    <div id="inboxGroups"></div>
+  </section>
+
+  <section id="tab-groups" hidden>
+    <div class="toolbar">
+      <h2>我的组</h2>
+      <span class="muted" id="groupHint"></span>
+      <span class="spacer"></span>
+      <button class="primary" id="newGroup">创建组</button>
+    </div>
+    <div id="groupList"></div>
+  </section>
+
+  <section id="tab-users" hidden>
+    <div class="toolbar">
+      <h2>用户管理</h2>
+      <span class="spacer"></span>
+      <input type="search" id="userSearch" placeholder="搜索姓名、用户名或邮箱" style="width:220px" aria-label="搜索用户">
+      <button class="primary" id="newUser">新建用户</button>
+    </div>
+    <div id="userList"></div>
+  </section>
+</main>
+<script src="/js/common.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/home.js"></script>
+</body>
+</html>

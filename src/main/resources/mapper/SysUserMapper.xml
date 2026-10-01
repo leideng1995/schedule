@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.schedule.mapper.SysUserMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="userId">
+        INSERT INTO sys_user (username, password_hash, display_name, email, role)
+        VALUES (#{username}, #{passwordHash}, #{displayName}, #{email}, #{role})
+    </insert>
+
+    <select id="findByEmail" resultType="com.example.schedule.model.SysUser">
+        SELECT * FROM sys_user WHERE email = #{email}
+    </select>
+
+    <update id="updateProfile">
+        UPDATE sys_user SET display_name = #{displayName}, email = #{email} WHERE user_id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.schedule.model.SysUser">
+        SELECT * FROM sys_user WHERE user_id = #{id}
+    </select>
+
+    <select id="findByUsername" resultType="com.example.schedule.model.SysUser">
+        SELECT * FROM sys_user WHERE username = #{username}
+    </select>
+
+    <select id="findByIds" resultType="com.example.schedule.model.SysUser">
+        SELECT * FROM sys_user WHERE user_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="search" resultType="com.example.schedule.model.SysUser">
+        SELECT * FROM sys_user
+        <where>
+            <if test="role != null">role = #{role}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (username LIKE CONCAT('%', #{keyword}, '%') OR display_name LIKE CONCAT('%', #{keyword}, '%')
+                     <if test="matchEmail">OR email LIKE CONCAT('%', #{keyword}, '%')</if>)
+            </if>
+        </where>
+        ORDER BY user_id
+    </select>
+
+    <select id="countByRole" resultType="int">
+        SELECT COUNT(*) FROM sys_user WHERE role = #{role}
+    </select>
+
+    <update id="updatePassword">
+        UPDATE sys_user SET password_hash = #{passwordHash}, must_change_password = #{mustChange}
+        WHERE user_id = #{id}
+    </update>
+</mapper>

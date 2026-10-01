@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.schedule.mapper.GroupMapper">
+
+    <sql id="groupCols">
+        g.group_id, g.name, g.owner_id, g.need_consent, g.created_at,
+        o.display_name AS owner_name,
+        (SELECT COUNT(*) FROM group_member x WHERE x.group_id = g.group_id AND x.status = 'ACCEPTED') AS accepted_count,
+        (SELECT COUNT(*) FROM group_member x WHERE x.group_id = g.group_id AND x.status = 'PENDING') AS pending_count
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="groupId">
+        INSERT INTO user_group (name, owner_id, need_consent) VALUES (#{name}, #{ownerId}, #{needConsent})
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM user_group WHERE group_id = #{id}
+    </delete>
+
+    <select id="findById" resultType="com.example.schedule.model.UserGroup">
+        SELECT <include refid="groupCols"/>
+        FROM user_group g JOIN sys_user o ON o.user_id = g.owner_id
+        WHERE g.group_id = #{id}
+    </select>
+
+    <select id="findForUser" resultType="com.example.schedule.model.UserGroup">
+        SELECT <include refid="groupCols"/>, m.status AS my_status
+        FROM user_group g
+        JOIN sys_user o ON o.user_id = g.owner_id
+        LEFT JOIN group_member m ON m.group_id = g.group_id AND m.user_id = #{userId}
+        WHERE g.owner_id = #{userId} OR m.user_id IS NOT NULL
+        ORDER BY g.created_at DESC, g.group_id DESC
+    </select>
+
+    <select id="findMembers" resultType="com.example.schedule.model.GroupMember">
+        SELECT m.*, u.username, u.display_name
+        FROM group_member m JOIN sys_user u ON u.user_id = m.user_id
+        WHERE m.group_id = #{groupId}
+        ORDER BY m.invited_at, m.user_id
+    </select>
+
+    <select id="findMember" resultType="com.example.schedule.model.GroupMember">
+        SELECT m.*, u.username, u.display_name
+        FROM group_member m JOIN sys_user u ON u.user_id = m.user_id
+        WHERE m.group_id = #{groupId} AND m.user_id = #{userId}
+    </select>
+
+    <select id="findAcceptedUserIds" resultType="long">
+        SELECT user_id FROM group_member WHERE group_id = #{groupId} AND status = 'ACCEPTED' ORDER BY user_id
+    </select>
+
+    <!-- 管理员组直接 ACCEPTED,同时记回复时间;普通用户组为 PENDING,回复时间清空 -->
+    <insert id="upsertMember">
+        INSERT INTO group_member (group_id, user_id, status, responded_at)
+        VALUES (#{groupId}, #{userId}, #{status}, IF(#{status} = 'ACCEPTED', NOW(), NULL))
+        ON DUPLICATE KEY UPDATE status = VALUES(status), invited_at = NOW(), responded_at = VALUES(responded_at)
+    </insert>
+
+    <update id="updateMemberStatus">
+        UPDATE group_member SET status = #{status}, responded_at = NOW()
+        WHERE group_id = #{groupId} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteMember">
+        DELETE FROM group_member WHERE group_id = #{groupId} AND user_id = #{userId}
+    </delete>
+</mapper>
